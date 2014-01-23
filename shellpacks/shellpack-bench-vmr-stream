@@ -58,7 +58,7 @@ if [ "$SMALLONLY" != "yes" ]; then
 	done
 fi
 for backing in $BACKINGLIST; do
-	echo 0 > /proc/sys/vm/nr_hugepages
+	sudo bash -c 'echo 0 > /proc/sys/vm/nr_hugepages'
 	case "$backing" in
 		static-small)
 			save_rc $RUNBENCH -r $LOGDIR_RESULTS/stream-static-small 2>&1

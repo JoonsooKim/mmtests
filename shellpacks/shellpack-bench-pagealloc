@@ -58,7 +58,7 @@ for ORDER in `seq $ORDER_MIN $ORDER_MAX`; do
 
 		# Execute
 		monitor_pre_hook $LOGDIR_RESULTS $ORDER-$BATCH
-		stap -g /tmp/pagealloc.stp | tee -a $LOGDIR_RESULTS/pagealloc.log
+		sudo stap -g /tmp/pagealloc.stp | tee -a $LOGDIR_RESULTS/pagealloc.log
 		monitor_post_hook $LOGDIR_RESULTS $ORDER-$BATCH
 
 		BATCH=$((BATCH<<1))
