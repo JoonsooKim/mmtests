@@ -1,0 +1,239 @@
+%{
+#include <linux/fs.h>
+#include <linux/types.h>
+#include <linux/proc_fs.h>
+#include <linux/kernel.h>
+
+/* Module specific */
+#include <linux/mmzone.h>
+#include <linux/mm.h>
+#include <linux/vmalloc.h>
+#include <linux/spinlock.h>
+#include <linux/highmem.h>
+#include <linux/time.h>
+#include <linux/ktime.h>
+
+extern struct page *generic_alloc_cma(unsigned long nr_pages,
+					unsigned long align_pages);
+extern bool generic_release_cma(struct page *page,
+					unsigned long nr_pages);
+
+#define PARAM_SIZE_ALLOC 8
+#define PARAM_NUM_ALLOC 16
+#define PARAM_MSDELAY 100
+
+#ifdef CONFIG_X86
+/**
+ * rdtsc: Read the current number of clock cycles that have passed
+ */
+inline unsigned long long read_clockcycles(void)
+{
+	unsigned long low_time, high_time;
+	asm volatile(
+		"rdtsc \n\t"
+			: "=a" (low_time),
+			  "=d" (high_time));
+        return ((unsigned long long)high_time << 32) | (low_time);
+}
+#else
+#warning read_clockcycles not implemented for this arch
+inline unsigned long long read_clockcycles(void)
+{
+	return jiffies;
+}
+#endif /* CONFIG_X86 */
+%}
+
+function alloc_runtest() %{
+	unsigned long size;		/* Size of each allocation */
+	unsigned long numpages;		/* nr of pages of each allocation */
+	unsigned long numalloc;		/* nr of allocation */
+	unsigned long delay;		/* delay for each allocation */
+	ktime_t begin, end;
+	unsigned long elapsed;
+
+	struct page **pages;		/* Pages that were allocated */
+	unsigned long attempts=0;
+	unsigned long alloced=0;
+	unsigned long nextjiffies = jiffies;
+	unsigned long lastjiffies = jiffies;
+	unsigned long success=0;
+	unsigned long fail=0;
+	unsigned long aborted=0;
+	unsigned long page_dma=0, page_dma32=0, page_normal=0, page_highmem=0, page_easyrclm=0;
+	struct zone *zone;
+	char finishString[60];
+	int timing_pages, pages_required;
+	bool enabled_preempt = false;
+
+	/* Get the parameters */
+	size = PARAM_SIZE_ALLOC;
+	numalloc = PARAM_NUM_ALLOC;
+	delay = PARAM_MSDELAY;
+
+	/* Check parameters */
+	if (size <= 0 || !is_power_of_2(size)) {
+		_stp_printf("Size request of %lu makes no sense\n", size);
+		goto out_preempt;
+	}
+	numpages = (size * 1024 * 1024) >> PAGE_SHIFT;
+
+	if (numalloc < 0) {
+		_stp_printf("Number of allocations %lu makes no sense\n", numalloc);
+		goto out_preempt;
+	}
+
+	if (in_atomic()) {
+		_stp_printf("WARNING: Enabling preempt behind systemtaps back\n");
+		preempt_enable();
+		enabled_preempt = true;
+	}
+
+	/*
+	 * Allocate memory to store pointers to pages.
+	 */
+	pages = __vmalloc((numalloc+1) * sizeof(struct page **),
+			GFP_KERNEL|__GFP_HIGHMEM,
+			PAGE_KERNEL);
+	if (pages == NULL) {
+		_stp_printf("Failed to allocate space to store page pointers\n");
+		preempt_disable();
+		goto out_preempt;
+	}
+
+#if defined(OOM_DISABLE)
+	/* Disable OOM Killer */
+	_stp_printf("Disabling OOM killer for running process\n");
+	oomkilladj = current->oomkilladj;
+	current->oomkilladj = OOM_DISABLE;
+#endif /* OOM_DISABLE */
+
+	/*
+	 * Attempt to allocate the requested number of pages
+	 */
+	while (attempts != numalloc) {
+		struct page *page;
+
+		attempts++;
+		if (lastjiffies > jiffies)
+			nextjiffies = jiffies;
+
+		/* What the hell is this, should be a waitqueue */
+		while (jiffies < nextjiffies) {
+			__set_current_state(TASK_RUNNING);
+			schedule();
+		}
+		nextjiffies = jiffies + ( (HZ * delay)/1000);
+
+		/* Print message if this is taking a long time */
+		if (jiffies - lastjiffies > HZ) {
+			printk("High order alloc test attempts: %lu (%lu)\n",
+					attempts-1, alloced);
+		}
+
+		/* Print out a message every so often anyway */
+		if (attempts > 1 && (attempts-1) % 10 == 0) {
+			printk("High order alloc test attempts: %lu (%lu)\n",
+					attempts-1, alloced);
+		}
+
+		lastjiffies = jiffies;
+
+		begin = ktime_get();
+		page = generic_alloc_cma(numpages, numpages);
+		end = ktime_get();
+		elapsed = ktime_to_us(ktime_sub(end, begin));
+
+		if (page) {
+			_stp_printf("%d success %lu\n", attempts - 1, elapsed);
+			//_stp_printf(testinfo, HIGHALLOC_BUDDYINFO, attempts, 1);
+			success++;
+			pages[alloced++] = page;
+
+			/* Count what zone this is */
+			zone = page_zone(page);
+			if (zone->name != NULL && !strcmp(zone->name, "Movable")) page_easyrclm++;
+			if (zone->name != NULL && !strcmp(zone->name, "HighMem")) page_highmem++;
+			if (zone->name != NULL && !strcmp(zone->name, "Normal")) page_normal++;
+			if (zone->name != NULL && !strcmp(zone->name, "DMA32")) page_dma32++;
+			if (zone->name != NULL && !strcmp(zone->name, "DMA")) page_dma++;
+
+
+			/* Give up if it takes more than 60 seconds to allocate */
+			if (jiffies - lastjiffies > HZ * 600) {
+				printk("Took more than 600 seconds to allocate a block, giving up");
+				aborted = attempts;
+				attempts = numalloc;
+				break;
+			}
+
+		} else {
+			_stp_printf("%d failure %lu\n", attempts - 1, elapsed);
+			//printp_buddyinfo(testinfo, HIGHALLOC_BUDDYINFO, attempts, 0);
+			fail++;
+
+			/* Give up if it takes more than 30 seconds to fail */
+			if (jiffies - lastjiffies > HZ * 1200) {
+				printk("Took more than 1200 seconds and still failed to allocate, giving up");
+				aborted = attempts;
+				attempts = numalloc;
+				break;
+			}
+		}
+	}
+
+	/* Re-enable OOM Killer state */
+#ifdef OOM_DISABLED
+	_stp_printf("Re-enabling OOM Killer status\n");
+	current->oomkilladj = oomkilladj;
+#endif
+
+	_stp_printf("Test completed with %lu allocs, printing results\n", alloced);
+
+	/* Print header */
+	_stp_printf("NumberOfAlloc:         %lu\n", numalloc);
+	_stp_printf("SizeOfAlloc:           %lu\n", numpages);
+	_stp_printf("Allocation type:       CMA\n");
+	_stp_printf("Attempted allocations: %lu\n", attempts);
+	_stp_printf("Success allocs:        %lu\n", success);
+	_stp_printf("Failed allocs:         %lu\n", fail);
+	_stp_printf("DMA32 zone allocs:     %lu\n", page_dma32);
+	_stp_printf("DMA zone allocs:       %lu\n", page_dma);
+	_stp_printf("Normal zone allocs:    %lu\n", page_normal);
+	_stp_printf("HighMem zone allocs:   %lu\n", page_highmem);
+	_stp_printf("EasyRclm zone allocs:  %lu\n", page_easyrclm);
+	_stp_printf("%% Success:             %lu\n", (success * 100) / (unsigned long)attempts);
+
+	/*
+	 * Free up the pages
+	 */
+	_stp_printf("Test complete, freeing %lu pages\n", alloced);
+	if (alloced > 0) {
+		do {
+			alloced--;
+			if (pages[alloced] != NULL) {
+				generic_release_cma(pages[alloced], numpages);
+			}
+		} while (alloced != 0);
+		vfree(pages);
+	}
+
+	if (aborted == 0)
+		strcpy(finishString, "Test completed successfully\n");
+	else
+		sprintf(finishString, "Test aborted after %lu allocations due to delays\n", aborted);
+
+	_stp_printf("%s", finishString);
+
+out_preempt:
+	if (enabled_preempt)
+		preempt_disable();
+
+	return;
+%}
+
+probe begin
+{
+	alloc_runtest()
+	exit()
+}
