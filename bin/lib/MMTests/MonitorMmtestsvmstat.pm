@@ -172,8 +172,13 @@ sub extractReport($$$$) {
 	my $elapsed_time;
 	my %zones_seen;
 
-	my $file = "$reportDir/tests-timestamp-$testName";
+	my $i;
+	my $iterations = 10;
 
+	my $file;
+
+	for ($i = 1; $i <= $iterations; $i++) {
+	$file = "$reportDir/$i/tests-timestamp-$testName";
 	open(INPUT, $file) || die("Failed to open $file\n");
 	while (<INPUT>) {
 		if ($_ =~ /^test begin \:\: $testBenchmark/) {
@@ -214,9 +219,9 @@ sub extractReport($$$$) {
 
 			my ($key, $value) = split(/\s/, $_);
 			if ($reading_before) {
-				$vmstat_before{$key} = $value;
+				$vmstat_before{$key} += $value;
 			} elsif ($reading_after) {
-				$vmstat_after{$key} = $value;
+				$vmstat_after{$key} += $value;
 			}
 			if ($key eq "pgmigrate_success") {
 				$new_compaction_stats = 1;
@@ -227,6 +232,12 @@ sub extractReport($$$$) {
 		}
 	}
 	close INPUT;
+	}
+
+	foreach my $key (sort keys %vmstat_before) {
+		$vmstat_before{$key} /= $iterations;
+		$vmstat_after{$key} /= $iterations;
+	}
 
 	# kswapd steal
 	foreach my $key ("kswapd_steal", "pgsteal_kswapd_dma", "pgsteal_kswapd_dma32",

@@ -19,22 +19,33 @@ sub new() {
 sub extractReport($$$) {
 	my ($self, $reportDir, $testName, $testBenchmark) = @_;
 
-	my $file = "$reportDir/tests-timestamp-$testName";
+	my $file;
+	my $i;
+	my ($user, $system, $elapsed);
+	my $iterations = 10;
+
+	for ($i = 1; $i <= $iterations; $i++) {
+	$file = "$reportDir/$i/tests-timestamp-$testName";
 
 	open(INPUT, $file) || die("Failed to open $file\n");
 	while (<INPUT>) {
 		if ($_ =~ /^time \:\: $testBenchmark (.*)/) {
 			my $dummy;
-			my ($user, $system, $elapsed);
+			my ($useri, $systemi, $elapsedi);
 
-			($user, $dummy,
-			 $system, $dummy,
-			 $elapsed, $dummy) = split(/\s/, $1);
+			($useri, $dummy,
+			 $systemi, $dummy,
+			 $elapsedi, $dummy) = split(/\s/, $1);
 
-			push @{$self->{_ResultData}}, [ "", $user, $system, $elapsed];
+			$user += $useri;
+			$system += $systemi;
+			$elapsed += $elapsedi;
 		}
 	}
 	close INPUT;
+	}
+
+	push @{$self->{_ResultData}}, [ "", $user / $iterations, $system / $iterations, $elapsed / $iterations];
 }
 
 1;
