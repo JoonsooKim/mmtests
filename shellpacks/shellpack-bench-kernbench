@@ -40,7 +40,11 @@ fi
 
 WEB_LOCATION=http://ftp.kernel.org/pub/linux/kernel/v3.0/linux-$VERSION.tar.gz
 MIRROR_LOCATION=$WEBROOT/kernbench/linux-$VERSION.tar.gz
-THREADS=$(($NUMCPUS*$FACTOR))
+if [ -n "$KERNBENCH_MAX_THREADS" ]; then
+       THREADS=$KERNBENCH_MAX_THREADS
+else
+       THREADS=$(($NUMCPUS*$FACTOR))
+fi
 
 pushd $TESTDISK_DIR > /dev/null
 
