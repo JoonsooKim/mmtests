@@ -86,7 +86,7 @@ function sources_fetch() {
 	OUTPUT=$3
 
 	echo "$P: Fetching from mirror $MIRROR"
-	wget -q -O $OUTPUT $MIRROR
+	cp $MIRROR $OUTPUT
 	if [ $? -ne 0 ]; then
 		if [ "$WEB" = "NOT_AVAILABLE" ]; then
 			die Benchmark is not publicly available. You must make it available from a local mirror
