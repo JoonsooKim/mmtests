@@ -35,7 +35,6 @@ fi
 
 # Rename directory to something we expect.
 DST_DIR=`tar tf $TARFILE | head -n 1 | awk -F / '{print $1}'`
-mv $DST_DIR ebizzy-$VERSION
 pushd ebizzy-$VERSION > /dev/null || die Failed to rename tar
 
 echo 'diff --git a/ebizzy.c b/ebizzy.c
