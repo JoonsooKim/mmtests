@@ -168,22 +168,22 @@ fi
 
 function enable_transhuge() {
 	if [ -e /sys/kernel/mm/transparent_hugepage/enabled ]; then
-		echo always > /sys/kernel/mm/transparent_hugepage/enabled
+		sudo bash -c "echo always > /sys/kernel/mm/transparent_hugepage/enabled"
 	fi
 }
 
 function disable_transhuge() {
 	if [ -e /sys/kernel/mm/transparent_hugepage/enabled ]; then
-		echo never > /sys/kernel/mm/transparent_hugepage/enabled
+		sudo bash -c "echo never > /sys/kernel/mm/transparent_hugepage/enabled"
 	fi
 }
 
 function reset_transhuge() {
 	if [ -e /sys/kernel/mm/transparent_hugepage/enabled ]; then
 		if [ "$VM_TRANSPARENT_HUGEPAGES_DEFAULT" = "default" ]; then
-			echo $TRANSHUGE_DEFAULT > /sys/kernel/mm/transparent_hugepage/enabled
+			sudo bash -c "echo $TRANSHUGE_DEFAULT > /sys/kernel/mm/transparent_hugepage/enabled"
 		else
-			echo $VM_TRANSPARENT_HUGEPAGES_DEFAULT > /sys/kernel/mm/transparent_hugepage/enabled
+			sudo bash -c "echo $VM_TRANSPARENT_HUGEPAGES_DEFAULT > /sys/kernel/mm/transparent_hugepage/enabled"
 		fi
 	else
 		if [ "$VM_TRANSPARENT_HUGEPAGES_DEFAULT" != "never" -a "$VM_TRANSPARENT_HUGEPAGES_DEFAULT" != "default" ]; then

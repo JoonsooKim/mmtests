@@ -132,7 +132,7 @@ fi
 
 if [ -f /proc/sys/vm/hugepages_treat_as_movable ]; then
 	echo Treating hugepages as Movable
-	echo 1 > /proc/sys/vm/hugepages_treat_as_movable
+	sudo bash -c 'echo 1 > /proc/sys/vm/hugepages_treat_as_movable'
 fi
 
 echo "Pagesize:         $PAGESIZE"

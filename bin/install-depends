@@ -29,6 +29,8 @@ my %package_map = (
 	"debian::xfsprogs-devel" => "xfslibs-dev",
 	"debian::btrfsprogs"     => "btrfs-tools",
 	"debian::xz"             => "xz-utils",
+	"debian::libstdc++-devel" => "libstdc++6-4.6-dev",
+	"debian::popt-devel" => "libpopt-dev",
 );
 	
 my %package_bin = (
